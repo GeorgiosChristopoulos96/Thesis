@@ -35,3 +35,6 @@
 /WebNLG_corpus_reader/train.json
 /WebNLG_corpus_reader/reference7-en.txt
 .idea
+/Datasets/OPUS-100/
+/Datasets/OPUS-100/cache/
+/Datasets/
