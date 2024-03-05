@@ -22,7 +22,7 @@ def calculate_overlap(ngram, rdf_data):
 
 
 def compute_metrics(predictions, references, rdf_tables):
-    """Computes precision, recall, and F-score based on predictions, references, and RDF tables."""
+    """Computes precision, recall, and F-score based on predictions, references_dev, and RDF tables."""
     precision_sum, recall_sum, f_score_sum = 0.0, 0.0, 0.0
 
     for pred, refs, rdf in zip(predictions, references, rdf_tables):
@@ -52,7 +52,7 @@ def compute_metrics(predictions, references, rdf_tables):
 
 
 # Example usage
-references_file = "path/to/references.txt"
+references_file = "path/to/references_dev.txt"
 generations_file = "path/to/generations.txt"
 tables_file = "path/to/tables.txt"
 

@@ -5,13 +5,13 @@ from pathlib import Path
 import random
 
 # Define the base and output directories
-base_dir = Path("WebNLG_En/release_v3.0/en")
-output_base = Path("WebNLG_En_preprocessed/release_v3.0/en")
-references_dir = output_base / "references"
+base_dir = Path("Datasets/WebNLG_En/release_v3.0/en")
+output_base = Path("Datasets/WebNLG_En_preprocessed/release_v3.0/en")
+# references_dir = output_base / "references_test"
 
 # Ensure the output directories exist
 output_base.mkdir(parents=True, exist_ok=True)
-references_dir.mkdir(parents=True, exist_ok=True)
+# references_dir.mkdir(parents=True, exist_ok=True)
 lex_data = defaultdict(list)
 def preprocess_xml_file(input_xml, output_triples_file, output_lex_file):
     # Ensure the output directory exists
@@ -71,7 +71,7 @@ for triples_dir in base_dir.glob('train/*triples'):
         output_lex_file = output_dir / f"{file.stem}.lex.txt"
         print(f"Preprocessing {file} -> {output_triples_file} and {output_lex_file}")
         preprocess_xml_file(file, output_triples_file, output_lex_file)
-for i in lex_data:
-    with open(references_dir / f"reference{i}.txt", 'w') as f:
-        f.writelines(lex_data[i])
+# for i in lex_data:
+#     with open(references_dir / f"reference{i}.txt", 'w') as f:
+#         f.writelines(lex_data[i])
 print("All directories processed. Preprocessed files are in", output_base)

@@ -3,7 +3,7 @@ from benchmark_reader import select_files
 
 
 # where to find the corpus
-path_to_corpus = './webnlg-dataset/ru/train/'
+path_to_corpus = '/Users/georgioschristopoulos/PycharmProjects/Thesis/Datasets/WebNLG_En/release_v3.0/en/test'
 
 # initialise Benchmark object
 b = Benchmark()
@@ -20,10 +20,10 @@ print("Number of texts: ", b.total_lexcount())
 print("Number of distinct properties: ", len(list(b.unique_p_mtriples())))
 
 # convert data to JSON and write to a file
-b.b2json('./', 'train.json')
+b.b2json('/Users/georgioschristopoulos/PycharmProjects/Thesis/Datasets/WebNLG_En', 'test.json')
 
 # write data to XML
-b.b2xml('./', 'train.xml')
+b.b2xml('/Users/georgioschristopoulos/PycharmProjects/Thesis/Datasets/WebNLG_En', 'test.xml')
 
 # get access to each entry info
 for entry in b.entries:

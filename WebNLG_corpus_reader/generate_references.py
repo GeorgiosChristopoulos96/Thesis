@@ -22,12 +22,12 @@ def create_reference_files(b, lang):
                 entry_refs.append(lex.lex)
         else:
             print('unknown language')
-        # take only unique references (needed for Russian)
+        # take only unique references_dev (needed for Russian)
         unique_refs = list(dict.fromkeys(entry_refs))
         target_out.append(unique_refs)
     # the list with max elements
     max_refs = sorted(target_out, key=len)[-1]
-    # write references files
+    # write references_dev files
     for j in range(0, len(max_refs)):
         with open(f'reference{str(j)}-{lang}.txt', 'w+') as f:
             out = []
@@ -46,7 +46,7 @@ def run_on_corpus_per_lang(path_to_corpus, lang):
     files = select_files(path_to_corpus)
     # load files to Benchmark
     b.fill_benchmark(files)
-    # generate references
+    # generate references_dev
     create_reference_files(b, lang)
 
 
