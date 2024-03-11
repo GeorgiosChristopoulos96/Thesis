@@ -2,7 +2,7 @@ import os
 import json
 import uuid
 
-base_path = "/Users/georgioschristopoulos/PycharmProjects/Thesis/Datasets/OPUS-100"  # Replace with the actual path
+base_path = "/Users/georgioschristopoulos/PycharmProjects/Thesis/Datasets/OPUS-100/test"  # Replace with the actual path
 exclude_dirs = ["am-en", "ar-en"]
 aggregated_data = {
     "train": [],
@@ -28,7 +28,6 @@ for root, dirs, files in os.walk(base_path):
                     # Add a unique ID to each record
                     lang1, lang2 = list(record.keys())
                     record_with_id = {
-                        "id": generate_id(),
                         lang1: record[lang1],
                         lang2: record[lang2]
                     }

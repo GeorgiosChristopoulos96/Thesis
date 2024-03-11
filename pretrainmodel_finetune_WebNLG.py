@@ -1,27 +1,23 @@
-from datasets import Dataset, DatasetDict, load_metric
+import json
+from datasets import Dataset, load_metric
 import wandb
 from transformers import (AutoTokenizer, AutoModelForSeq2SeqLM,
                           DataCollatorForSeq2Seq, Seq2SeqTrainer,
                           Seq2SeqTrainingArguments)
 import pandas as pd
 import torch
-wandb.init(project="rdf-to-text", entity="gogot53")
 
+wandb.init(project="rdf-to-text", entity="gogot53")
+with open('config_finetune.json', 'r') as f:
+    config_args = json.load(f)
 # Log hyperparameters (optional but recommended)
-wandb.config.update({
-    "evaluation_strategy": "epoch",
-    "learning_rate": 1e-4,
-    "per_device_train_batch_size": 4,
-    "per_device_eval_batch_size": 4,
-    "num_train_epochs": 5,
-    "predict_with_generate": True,
-    "save_strategy": "epoch",
-    "save_total_limit": 1
-})
+wandb.config.update({k: v for k, v in config_args.items() if k != "wandb"})
+DATASET_PATH = "/Users/georgioschristopoulos/PycharmProjects/Thesis/Datasets/WebNLG_En/release_v3.0/ALT_prep"
+
 # Paths to your TSV files
-train_tsv = '/Users/georgioschristopoulos/PycharmProjects/Thesis/Datasets/WebNLG_En/release_v3.0/ALT_prep/train.tsv'
-dev_tsv = '/Users/georgioschristopoulos/PycharmProjects/Thesis/Datasets/WebNLG_En/release_v3.0/ALT_prep/dev.tsv'
-test_tsv = '/Users/georgioschristopoulos/PycharmProjects/Thesis/Datasets/WebNLG_En/release_v3.0/ALT_prep/test.tsv'
+train_tsv = f'{DATASET_PATH}/train.tsv'
+dev_tsv = f'{DATASET_PATH}/dev.tsv'
+test_tsv = f'{DATASET_PATH}/test.tsv'
 
 # Function to load a TSV file and prepare a Hugging Face Dataset
 def load_dataset_from_tsv(tsv_path):
@@ -49,8 +45,8 @@ test_dataset = load_dataset_from_tsv(test_tsv)
 
 # Define tokenizer and model
 checkpoint = "google/mt5-small"
-tokenizer = AutoTokenizer.from_pretrained(checkpoint)
-model = AutoModelForSeq2SeqLM.from_pretrained(checkpoint).to("cuda" if torch.cuda.is_available() else "mps")
+tokenizer = AutoTokenizer.from_pretrained(checkpoint,legacy = False, use_fast = False)
+model = AutoModelForSeq2SeqLM.from_pretrained(checkpoint,dropout_rate=0.1).to("cuda" if torch.cuda.is_available() else "mps")
 
 # Preprocessing function with prefix included
 def preprocess_function(examples):
@@ -74,20 +70,7 @@ tokenized_train_dataset.set_format(type='torch', columns=['input_ids', 'attentio
 tokenized_dev_dataset.set_format(type='torch', columns=['input_ids', 'attention_mask', 'labels'])
 tokenized_test_dataset.set_format(type='torch', columns=['input_ids', 'attention_mask', 'labels'])
 # Define training arguments
-training_args = Seq2SeqTrainingArguments(
-    output_dir="./rdf_to_text_model",
-    evaluation_strategy="epoch",
-    learning_rate=1e-4,
-    per_device_train_batch_size=4,  # Adjust according to your GPU
-    per_device_eval_batch_size=4,
-    num_train_epochs=5,
-    predict_with_generate=True,
-    save_strategy="epoch",
-    save_total_limit=1,
-    report_to="wandb",
-    use_mps_device=True,
-    run_name="rdf_to_text_experiment",
-)
+training_args = Seq2SeqTrainingArguments(**config_args)
 
 # Data collator
 data_collator = DataCollatorForSeq2Seq(tokenizer=tokenizer, model=model)
