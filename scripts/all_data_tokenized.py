@@ -2,7 +2,7 @@ from datasets import concatenate_datasets, load_dataset
 from transformers import AutoTokenizer, DataCollatorForSeq2Seq, AutoModelForSeq2SeqLM
 
 checkpoint = "google/mt5-small"  # You can choose the model size that fits your needs
-tokenizer = AutoTokenizer.from_pretrained(checkpoint,  legacy = False, use_fast = False)
+tokenizer = AutoTokenizer.from_pretrained(checkpoint,  legacy = False, use_fast = True)
 model = AutoModelForSeq2SeqLM.from_pretrained(checkpoint)
 train_datasets = []
 validation_datasets = []
@@ -23,7 +23,7 @@ def preprocess_function(examples, source_lang, target_lang, tokenizer):
     return model_inputs
 
 
-# Example of how you might load and preprocess datasets for multiple language pairs
+# Example of how you might load and preprocess datasets for multiple PARENT_metric pairs
 language_pairs = [("en", "am"), ("en", "ar"), ("en", "fr"),("en","ga"),("en","gd"), ("en","it"),("en","he")]
 all_datasets = []
 file = "/Users/georgioschristopoulos/PycharmProjects/Thesis/Datasets/OPUS-100/test"
@@ -63,7 +63,7 @@ unified_dataset_train = concatenate_datasets([ds["train"] for ds in all_datasets
 unified_dataset_test = concatenate_datasets([ds["test"] for ds in all_datasets])
 unified_dataset_validation = concatenate_datasets([ds["validation"] for ds in all_datasets])
 
-unified_dataset_train.save_to_disk("/Users/georgioschristopoulos/PycharmProjects/Thesis/train_dataset")
+unified_dataset_train.save_to_disk("/Users/georgioschristopoulos/PycharmProjects/Thesis/train_no_augm_dataset")
 unified_dataset_test.save_to_disk("/Users/georgioschristopoulos/PycharmProjects/Thesis/validation_dataset")
 unified_dataset_validation.save_to_disk("/Users/georgioschristopoulos/PycharmProjects/Thesis/test_dataset")
 

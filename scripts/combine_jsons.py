@@ -2,7 +2,7 @@ import os
 import json
 import uuid
 
-base_path = "/Users/georgioschristopoulos/PycharmProjects/Thesis/Datasets/OPUS-100/test"  # Replace with the actual path
+base_path = "/Users/georgioschristopoulos/PycharmProjects/Thesis/Datasets/OPUS-100/test_augmented"  # Replace with the actual path
 exclude_dirs = ["am-en", "ar-en"]
 aggregated_data = {
     "train": [],
@@ -19,7 +19,7 @@ for root, dirs, files in os.walk(base_path):
     # Ignore specified directories
     dirs[:] = [d for d in dirs if d not in exclude_dirs]
     for file_name in files:
-        if file_name in ["train.json", "test.json", "validation.json"]:
+        if file_name in ["train.json"]:#]:
             file_path = os.path.join(root, file_name)
             with open(file_path, 'r') as file:
                 data = json.load(file)

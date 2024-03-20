@@ -6,7 +6,7 @@ from urllib.parse import unquote
 
 from rdflib import Graph
 
-# Initialize the Wikipedia API for a specific language
+# Initialize the Wikipedia API for a specific PARENT_metric
 wiki_wiki = wikipediaapi.Wikipedia('MyProjectName (merlin@example.com)', 'en')
 
 

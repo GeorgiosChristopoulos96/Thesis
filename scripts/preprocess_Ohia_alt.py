@@ -41,14 +41,14 @@ def preprocess_json(file_path):
 
 
 # Directories
-orig = '/Users/georgioschristopoulos/PycharmProjects/Thesis/Datasets/WebNLG_En/release_v3.0'
-prep = '/Users/georgioschristopoulos/PycharmProjects/Thesis/Datasets/WebNLG_En/release_v3.0/ALT_prep'
+orig = '/Users/georgioschristopoulos/PycharmProjects/Thesis/Datasets/WebNLG_br_mt_cy/2023-Challenge/data'
+prep = '/Users/georgioschristopoulos/PycharmProjects/Thesis/Datasets/WebNLG_br_mt_cy/2023-Challenge/data/ALT_prep'
 os.makedirs(prep, exist_ok=True)
 
 # Process splits
-splits = ['train', 'dev', 'test']
+splits = ['train', 'dev']
 for split in splits:
-    file_path = f'{orig}/en/{split}/{split}.json'
+    file_path = f'{orig}/{split}/{split}.json'
     df = preprocess_json(file_path)
 
     # Shuffle train and dev splits
