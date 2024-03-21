@@ -1,17 +1,19 @@
 import json
 import os
-
 import transformers
+from matplotlib import ticker
 import wandb
 from transformers import AutoTokenizer, AutoModelForSeq2SeqLM, DataCollatorForSeq2Seq, Seq2SeqTrainingArguments, \
-    Seq2SeqTrainer, EarlyStoppingCallback, Adafactor
+    Seq2SeqTrainer, EarlyStoppingCallback, Adafactor,TrainerCallback
 from datasets import load_from_disk
 import numpy as np
 import torch
 import gc
 import evaluate
 import nltk
-
+import matplotlib.pyplot as plt
+from matplotlib import ticker
+import os
 from Utils import format_only_labels, load_eval_metrics, postprocess_text, evaluate_texts, plot_dual_metrics
 
 #nltk.download('wordnet')
@@ -36,42 +38,16 @@ else:
 checkpoint = "google/mt5-small"
 tokenizer = AutoTokenizer.from_pretrained(checkpoint, legacy = False, use_fast = False)
 model = AutoModelForSeq2SeqLM.from_pretrained(checkpoint).to(mps_device)
+class MetricsCallback(TrainerCallback):
+    def __init__(self):
+        super().__init__()
+        self.metrics_history = []
 
-# def format_only_labels(labels):
-#     formatted_labels = []
-#     for label in labels:
-#         # Check if the label is already in the desired format: a list with a single string element
-#         if isinstance(label, list) and len(label) == 1 and isinstance(label[0], str):
-#             formatted_label = label
-#         else:
-#             # This block will handle cases where the label is not in the desired format,
-#             # including when it's a list with multiple elements or contains brackets
-#             if isinstance(label, list):
-#                 # Concatenate elements, remove brackets, and strip whitespace
-#                 formatted_label = [' '.join(label).replace('[', '').replace(']', '').strip()]
-#             else:
-#                 # For single string elements, just ensure no brackets and strip
-#                 formatted_label = [label.replace('[', '').replace(']', '').strip()]
-#         formatted_labels.append(formatted_label)
-#     return formatted_labels
-# def postprocess_text(preds, labels):
-#     preds = [pred.strip() for pred in preds]
-#     labels = format_only_labels(labels)
-#     return preds, labels
-# def load_eval_metrics():
-#     """
-#     Loads in all metrics that will be used later on during evaluation. This is seperated to not load in the metrics a dozen of times during training.
-#     """
-#     bleu = evaluate.load("sacrebleu")
-#     rouge = evaluate.load('rouge')
-#     meteor = evaluate.load('meteor')
-#     ter = evaluate.load('ter')
-#     #perplexity = evaluate.load("perplexity", module_type="metric")
-#     bertscore = evaluate.load("bertscore")
-#
-#     print('LOGGING: load_eval_metrics DONE \n')
-#
-#     return bleu, rouge, meteor, ter, bertscore
+    def on_evaluate(self, args, state, control, metrics=None, **kwargs):
+        if metrics:
+            self.metrics_history.append(metrics)
+
+
 
 def compute_metrics(eval_preds):
     preds, labels = eval_preds
@@ -85,16 +61,20 @@ def compute_metrics(eval_preds):
     labels = np.where(labels != -100, labels, tokenizer.pad_token_id)
     decoded_labels = tokenizer.batch_decode(labels, skip_special_tokens=True)
 
-    # Post-processing the texts
-    #decoded_preds, decoded_labels = postprocess_text(decoded_preds, decoded_labels)
-    bleu_output, rouge_output, meteor_output, ter, bertscore_F1,bertscore_P, bertscore_R = evaluate_texts(decoded_preds, decoded_labels)
-    # Calculate metrics
+    bleu_output, rouge_output, meteor_output, ter, chrf, bertscore_F1,bertscore_P, bertscore_R = evaluate_texts(decoded_preds, decoded_labels)
+    filename = "/Users/georgioschristopoulos/PycharmProjects/Thesis/evaluation_steps_metrics.txt"
 
-    return {"bleu": bleu_output["score"], "rouge": rouge_output["rougeL"], "meteor": meteor_output["meteor"],
-            "TER": ter, "bertscore_F1": bertscore_F1, "bertscore_P": bertscore_P, "bertscore_R": bertscore_R}
+
+    metrics_evaluation = {"bleu": bleu_output["score"], "rouge": rouge_output["rougeL"], "meteor": meteor_output["meteor"],
+            "TER": ter, "chrf":chrf, "bertscore_F1": bertscore_F1, "bertscore_P": bertscore_P, "bertscore_R": bertscore_R}
+    with open(filename, "a") as file:
+        file.write(f"Evaluation at step {trainer.state.global_step}:\n")
+        for key, value in metrics_evaluation.items():
+            file.write(f"{key}: {value}\n")
+        file.write("\n")
+    return metrics_evaluation
 
 def preprocess_function(examples,source_lang, target_lang):
-    #inputs = [prefix + example[source_lang] for example in examples["translation"]]
     inputs = examples[source_lang]
     targets = examples[target_lang]
     model_inputs = tokenizer(inputs, max_length=128, truncation=True,padding="max_length", return_tensors="pt")
@@ -103,17 +83,14 @@ def preprocess_function(examples,source_lang, target_lang):
     model_inputs["labels"] = labels["input_ids"]
     return model_inputs
 
-
-
-
 path_to_shards = "/Users/georgioschristopoulos/PycharmProjects/Thesis"
 
-train = "/train_dataset"
-test = "/test_dataset"
-validation = "/validation_dataset"
+train = "/train_no_augm_dataset"
+test = "/test_no_augm_dataset"
+validation = "/validation_no_augm_dataset"
 # Now you have the dataset loaded and can access the train, test, and validation splits normally
 train_dataset = load_from_disk(f"{path_to_shards}/{train}").select(range(10))
-test_dataset = load_from_disk(f"{path_to_shards}/{test}")
+test_dataset = load_from_disk(f"{path_to_shards}/{test}").select(range(10))
 validation_dataset = load_from_disk(f"{path_to_shards}/{validation}").select(range(10))
 # tokenized_data = data.map(preprocess_function, batched=True)
 
@@ -131,6 +108,9 @@ scheduler = None
 # scheduler = transformers.get_inverse_sqrt_schedule(
 #     optimizer, num_warmup_steps= 1
 # )
+
+
+metrics_callback = MetricsCallback()
 training_args = Seq2SeqTrainingArguments(**config_args)
 # Setup the trainer
 trainer = Seq2SeqTrainer(
@@ -142,77 +122,149 @@ trainer = Seq2SeqTrainer(
     tokenizer=tokenizer,
     data_collator=data_collator,
     compute_metrics=compute_metrics,
-    callbacks=[EarlyStoppingCallback(early_stopping_patience=3)],
+    callbacks=[EarlyStoppingCallback(early_stopping_patience=3),metrics_callback],
 )
 
 # Train and save the model
 trainer.train()
-#trainer.save_model("./mt5_model_pretrain_curves")
+trainer.save_model("./mt5_model_pretrain_curves")
 
-import matplotlib.pyplot as plt
-
-# Assuming 'trainer_state' is your TrainerState object with the log_history attribute filled with data
 log_history = trainer.state.log_history
-
-#
-# # Define a function to plot training and validation metrics on the same graph
-# def scale_losses_with_first_as_max(values):
-#     # Set the first value as the max loss
-#     max_loss = values[0]
-#     # Scale other values relative to the first value
-#     scaled_values = [val / max_loss for val in values]
-#     return scaled_values
-#
-# def plot_dual_metrics(steps, values1, values2, title, y_label, filename,
-#                       label1='Training', label2='Validation'):
-#     # Scale the values so that the first value is 1
-#     values1 = scale_losses_with_first_as_max(values1)
-#     values2 = scale_losses_with_first_as_max(values2)
-#
-#     plt.figure(figsize=(10, 5))
-#     plt.plot(steps, values1, label=label1, color='blue', marker='o')
-#     plt.plot(steps, values2, label=label2, color='orange', marker='o')
-#     plt.title(title)
-#     plt.xlabel('Epochs')
-#     plt.ylabel(y_label)
-#     plt.legend()
-#     plt.grid(True)
-#     plt.tight_layout()
-#     plt.savefig(filename)
-#     plt.close()
-
-# Assuming log_history is a list of dictionaries with metrics logged at different steps
+def scale_losses_with_first_as_max(values):
+    # If the first value is 0, scaling will cause division by zero.
+    # In such a case, we can either skip scaling or set a minimum scale factor.
+    if values[0] == 0:
+        return values  # or you can return [val / (values[0] + epsilon) for val in values]
+    max_loss = values[0]
+    return [val / max_loss for val in values]
 
 
+def extract_metrics_for_plotting(metrics_history, metric_keys):
+    # Initialize a dictionary to hold the metrics
+    metrics_for_plotting = {}
 
-# Initialize lists to store the x and y values for each plot
-steps = []
-loss_values = []
-eval_loss_values = []
+    # Extract the values for each metric key
+    for key in metric_keys:
+        metric_values = extract_metric_values(metrics_history, key)
+        metrics_for_plotting[key] = metric_values
 
+    return metrics_for_plotting
+def extract_metric_values(metrics_history, metric_key):
+    values = []
+    for entry in metrics_history:
+        # For nested metrics like 'eval_TER', extract the 'score' key
+        if isinstance(entry.get(metric_key), dict):
+            values.append(entry[metric_key]['score'])
+        else:
+            values.append(entry[metric_key])
+    return values
 
-# Extract the metrics
-for entry in log_history:
-    if 'loss' in entry:
-        # Ensure 'step' is recorded only once for each entry that has 'loss'
-        if 'step' in entry and (not steps or entry['step'] > steps[-1]):
-            steps.append(entry['step'])
-        loss_values.append(entry['loss'])
+def plot_metrics_or_loss(steps, data_dict, title, ylabel, file_prefix, directory, is_loss=False, apply_scaling=False):
+    plt.figure(figsize=(10, 6))
 
-    if 'eval_loss' in entry:
-        # 'eval_loss' is usually logged at the same step as 'loss', but let's handle it just in case
-        if 'step' in entry and (not steps or entry['step'] > steps[-1]):
-            steps.append(entry['step'])
-        eval_loss_values.append(entry['eval_loss'])
+    for label, values in data_dict.items():
+        if apply_scaling and is_loss:
+            scaled_values = scale_losses_with_first_as_max(values)
+            plt.plot(steps, scaled_values, label=label)
+        else:
+            plt.plot(steps, values, label=label)
 
-plot_dual_metrics(
+    plt.title(title)
+    plt.xlabel('Evaluation Steps (in thousands)')
+    plt.ylabel(ylabel)
+    plt.legend()
+    plt.grid(True)
+
+    # Define a function that formats the ticks as 'number' + 'k'
+    def format_func(value, tick_number):
+        # Check if the value is greater than 0 and less than the maximum step
+        if 0 <= value < max(steps):
+            return f'{int(value)}k' if value >= 1000 else str(int(value))
+        return ''
+
+    # Use the custom function to format the x-axis ticks
+    plt.gca().xaxis.set_major_formatter(ticker.FuncFormatter(format_func))
+
+    plt.tight_layout()
+    plt.savefig(os.path.join(directory, f"{file_prefix}.png"))
+    plt.close()  # Close the figure to avoid display issues
+
+metrics_history = metrics_callback.metrics_history
+
+# Prepare data for plotting
+steps = [entry['step'] for entry in log_history if 'loss' in entry]
+#loss_values = [entry['loss'] for entry in log_history if 'loss' in entry]
+#eval_loss_values = [entry['eval_loss'] for entry in log_history if 'eval_loss' in entry]
+metrics_dict = {
+    'Training Loss': [entry['loss'] for entry in log_history if 'loss' in entry],  # Replace with your actual values
+    'Validation Loss': [entry['eval_loss'] for entry in log_history if 'eval_loss' in entry],
+}
+# Plot training and validation loss
+plot_metrics_or_loss(
     steps,
-    loss_values,
-    eval_loss_values,
+    metrics_dict,  # This is the dictionary containing loss values
     'Training and Validation Loss',
     'Loss',
-    '/Users/georgioschristopoulos/PycharmProjects/Thesis/loss_plot.png'
+    'loss_plot',
+    "/Users/georgioschristopoulos/PycharmProjects/Thesis",
+    is_loss=True,  # Specify that this is loss data
+    apply_scaling=True  # Specify whether to apply scaling
 )
+eval_preds = trainer.predict(test_dataset)
+filename = "/Users/georgioschristopoulos/PycharmProjects/Thesis/metrics_test.txt"
+metrics = eval_preds.metrics
+# Write the metrics to the file
+with open(filename, "w") as file:
+    for key, value in metrics.items():
+        file.write(f"{key}: {value}\n")
+
+
+
+def plot_single_metric(steps, values, metric_name, directory, apply_scaling=False):
+    plt.figure(figsize=(10, 6))
+    if apply_scaling:
+        scaled_values = scale_losses_with_first_as_max(values)
+        plt.plot(steps, scaled_values, label=metric_name)
+    else:
+        plt.plot(steps, values, label=metric_name)
+
+    plt.title(f'{metric_name.upper()} Score over Time')
+    plt.xlabel('Evaluation Steps (in thousands)')
+    plt.ylabel(f'{metric_name.capitalize()} Score')
+    plt.legend()
+    plt.grid(True)
+
+    # Format the x-axis labels with 'k' suffix for thousand
+    plt.gca().xaxis.set_major_formatter(ticker.FuncFormatter(lambda x, _: f'{int(x/1000)}k' if x >= 1000 else int(x)))
+
+    plt.tight_layout()
+    plt.savefig(os.path.join(directory, f"{metric_name}_plot.png"))
+    plt.close()
+
+# Loop over each metric and call plot_single_metric for each one
+
+
+
+# Prepare the steps (x-axis values)
+steps = list(range(len(metrics_history)))
+# Define the metrics to plot (you may add or remove metrics based on your needs)
+metric_keys = [
+    'eval_loss', 'eval_bleu', 'eval_rouge', 'eval_meteor', 'eval_chrf',
+    'eval_bertscore_F1', 'eval_bertscore_P', 'eval_bertscore_R'
+]
+
+for metric_name in metric_keys:
+    metric_values = extract_metric_values(metrics_history, metric_name)
+    # Check if metric_values is not empty to avoid plotting empty data
+    if metric_values:
+        plot_single_metric(
+            steps,
+            metric_values,
+            metric_name,
+            "/Users/georgioschristopoulos/PycharmProjects/Thesis",
+            apply_scaling=False  # Change to True if scaling is needed
+        )
+
 
 model_artifact = wandb.Artifact(
     name="pretrain_text_model",

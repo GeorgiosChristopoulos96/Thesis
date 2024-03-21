@@ -32,9 +32,9 @@ for source_lang, target_lang in language_pairs:
     dataset = load_dataset(
         "json",
         data_files={
-            "train": f"{file}/{source_lang}-{target_lang}/train.json",
-            "validation": f"{file}/{source_lang}-{target_lang}/validation.json",
-            "test": f"{file}/{source_lang}-{target_lang}/test.json",
+            "train": f"{file}/{source_lang}-{target_lang}/cleaned_train.json",
+            "validation": f"{file}/{source_lang}-{target_lang}/cleaned_validation.json",
+            "test": f"{file}/{source_lang}-{target_lang}/cleaned_test.json",
         },
         field="translation"
     )
@@ -64,8 +64,8 @@ unified_dataset_test = concatenate_datasets([ds["test"] for ds in all_datasets])
 unified_dataset_validation = concatenate_datasets([ds["validation"] for ds in all_datasets])
 
 unified_dataset_train.save_to_disk("/Users/georgioschristopoulos/PycharmProjects/Thesis/train_no_augm_dataset")
-unified_dataset_test.save_to_disk("/Users/georgioschristopoulos/PycharmProjects/Thesis/validation_dataset")
-unified_dataset_validation.save_to_disk("/Users/georgioschristopoulos/PycharmProjects/Thesis/test_dataset")
+unified_dataset_test.save_to_disk("/Users/georgioschristopoulos/PycharmProjects/Thesis/validation_no_augm_dataset")
+unified_dataset_validation.save_to_disk("/Users/georgioschristopoulos/PycharmProjects/Thesis/test_no_augm_dataset")
 
 
 # from datasets import load_from_disk

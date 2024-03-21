@@ -6,12 +6,12 @@ from datasets import Dataset, load_metric
 import wandb
 from transformers import (AutoTokenizer, AutoModelForSeq2SeqLM,
                           DataCollatorForSeq2Seq, Seq2SeqTrainer,
-                          Seq2SeqTrainingArguments)
+                          Seq2SeqTrainingArguments, EarlyStoppingCallback)
 import pandas as pd
 import torch
 import matplotlib.pyplot as plt
 from Utils import plot_dual_metrics, evaluate_texts
-
+from transformers import TrainerCallback
 wandb.init(project="rdf-to-text", entity="gogot53")
 with open('config_finetune.json', 'r') as f:
     config_args = json.load(f)
@@ -23,6 +23,16 @@ DATASET_PATH = "/Users/georgioschristopoulos/PycharmProjects/Thesis/Datasets/Web
 train_tsv = f'{DATASET_PATH}/train.tsv'
 dev_tsv = f'{DATASET_PATH}/dev.tsv'
 test_tsv = f'{DATASET_PATH}/test.tsv'
+class MetricsCallback(TrainerCallback):
+    def __init__(self):
+        super().__init__()
+        self.metrics_history = []
+
+    def on_evaluate(self, args, state, control, metrics=None, **kwargs):
+        if metrics:
+            self.metrics_history.append(metrics)
+
+
 
 
 
@@ -56,7 +66,6 @@ def load_dataset_from_tsv_single_lex(tsv_path):
 train_dataset = load_dataset_from_tsv_single_lex(train_tsv).select(range(10))  # Adjust according to your RAM
 dev_dataset = load_dataset_from_tsv_single_lex(dev_tsv).select(range(10))  # Adjust according to your RAM
 test_dataset = load_dataset_from_tsv(test_tsv)
-true_articles_dev = dev_dataset['target_text']
 # Define tokenizer and model
 checkpoint = "google/mt5-small"
 tokenizer = AutoTokenizer.from_pretrained(checkpoint,legacy = False, use_fast = False)
@@ -109,24 +118,21 @@ def compute_metrics(eval_preds):
 
     # Post-processing the texts
     #decoded_preds, decoded_labels = postprocess_text(decoded_preds, decoded_labels)
-    bleu_output, rouge_output, meteor_output, ter, bertscore_F1,bertscore_P, bertscore_R = evaluate_texts(decoded_preds, decoded_labels)
+    bleu_output, rouge_output, meteor_output, ter, chrf, bertscore_F1,bertscore_P, bertscore_R = evaluate_texts(decoded_preds, decoded_labels,"en")
     # Calculate metrics
+    filename = f"{DATASET_PATH}/evaluation_steps_metrics_finetuning.txt"
+    # Use 'a' mode for appending instead of 'w' mode which overwrites
+    metrics_evaluation = {"bleu": bleu_output["score"], "rouge": rouge_output["rougeL"], "meteor": meteor_output["meteor"],
+            "TER": ter, "chrf":chrf, "bertscore_F1": bertscore_F1, "bertscore_P": bertscore_P, "bertscore_R": bertscore_R}
+    with open(filename, "a") as file:
+        file.write(f"Evaluation at step {trainer.state.global_step}:\n")
+        for key, value in metrics_evaluation.items():
+            file.write(f"{key}: {value}\n")
+        file.write("\n")
+    return metrics_evaluation
 
-    return {"bleu": bleu_output["score"], "rouge": rouge_output["rougeL"], "meteor": meteor_output["meteor"],
-            "TER": ter, "bertscore_F1": bertscore_F1, "bertscore_P": bertscore_P, "bertscore_R": bertscore_R}
 
-# def compute_metrics(eval_preds):
-#     preds, labels = eval_preds
-#     if isinstance(preds, tuple):
-#         preds = preds[0]
-#     decoded_preds = tokenizer.batch_decode(preds, skip_special_tokens=True)
-#     decoded_labels = tokenizer.batch_decode(labels, skip_special_tokens=True)
-#     decoded_labels = [[label] for label in decoded_labels]
-#     result = metric.compute(predictions=decoded_preds, references=decoded_labels)
-#     wandb.log({"BLEU": result["score"]})
-#     return {"bleu": result["score"]}
-
-# Initialize Trainer
+metrics_callback = MetricsCallback()
 trainer = Seq2SeqTrainer(
     model=model,
     args=training_args,
@@ -134,7 +140,8 @@ trainer = Seq2SeqTrainer(
     eval_dataset=tokenized_dev_dataset,
     tokenizer=tokenizer,
     data_collator=data_collator,
-    compute_metrics= compute_metrics
+    compute_metrics= compute_metrics,
+    callbacks=[EarlyStoppingCallback(early_stopping_patience=3),metrics_callback],
 )
 
 # Train and save the model
@@ -146,34 +153,6 @@ trainer.train()
 # Assuming 'trainer_state' is your TrainerState object with the log_history attribute filled with data
 log_history = trainer.state.log_history
 
-
-# Define a function to plot training and validation metrics on the same graph
-# def scale_losses_with_first_as_max(values):
-#     # Set the first value as the max loss
-#     max_loss = values[0]
-#     # Scale other values relative to the first value
-#     scaled_values = [val / max_loss for val in values]
-#     return scaled_values
-#
-# def plot_dual_metrics(steps, values1, values2, title, y_label, filename,
-#                       label1='Training', label2='Validation'):
-#     # Scale the values so that the first value is 1
-#     values1 = scale_losses_with_first_as_max(values1)
-#     values2 = scale_losses_with_first_as_max(values2)
-#
-#     plt.figure(figsize=(10, 5))
-#     plt.plot(steps, values1, label=label1, color='blue', marker='o')
-#     plt.plot(steps, values2, label=label2, color='orange', marker='o')
-#     plt.title(title)
-#     plt.xlabel('Steps')
-#     plt.ylabel(y_label)
-#     plt.legend()
-#     plt.grid(True)
-#     plt.tight_layout()
-#     plt.savefig(filename)
-#     plt.close()
-
-# Assuming log_history is a list of dictionaries with metrics logged at different steps
 
 
 

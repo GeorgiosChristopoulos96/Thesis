@@ -2,7 +2,7 @@ import json
 import os
 import re
 import subprocess
-
+from matplotlib import pyplot as plt
 from tqdm import tqdm
 import evaluate
 import torch
@@ -19,17 +19,14 @@ if not torch.backends.mps.is_available():
 else:
     device = torch.device("mps")
 # Assuming FLAGS is a dictionary containing configuration like batch size and model path
-FLAGS = {
-    'saved_model_path': '/Users/georgioschristopoulos/PycharmProjects/Thesis/saved_models/rdf_to_text_model_final',
-    'batch_size': 4, # Adjust according to your setup
-    'parent_script_path': '/Users/georgioschristopoulos/PycharmProjects/Thesis/PARENT_metric/table_text_eval/table_text_eval.py',  # Add the path to the PARENT script
-    'output_dir': '/Users/georgioschristopoulos/PycharmProjects/Thesis',
-}
+SAVED_MODEL_PATH = '/Users/georgioschristopoulos/PycharmProjects/Thesis/saved_models/rdf_to_text_model_final'
+PARENT_SCRIPT_PATH ='/Users/georgioschristopoulos/PycharmProjects/Thesis/PARENT_metric/table_text_eval/table_text_eval.py'
+OUTPUT_DIR ='/Users/georgioschristopoulos/PycharmProjects/Thesis'
 
 
-def save_decoded_data(decoded_preds, decoded_labels, preds_file='decoded_preds.json', labels_file='decoded_labels.json'):
-    with open(preds_file, 'w') as pf:
-        json.dump(decoded_preds, pf)
+# def save_decoded_data(decoded_preds, decoded_labels, preds_file='decoded_preds.json', labels_file='decoded_labels.json'):
+#     with open(preds_file, 'w') as pf:
+#         json.dump(decoded_preds, pf)
 
 
 def preprocess_function(examples):
@@ -44,25 +41,12 @@ def preprocess_function(examples):
     return model_inputs
 
 
-# def load_dataset_from_tsv_with_multiple_refs(tsv_path):
-#     df = pd.read_csv(tsv_path, delimiter='\t', keep_default_na=False)
-#     df['input_text'] = df['triples']
-#     # Split the 'lexicalization' field into multiple references
-#     df['target_texts'] = df['lexicalization'].apply(lambda x: x.split('.",'))
-#     # Explode the DataFrame so that each RDF set gets multiple rows, one for each reference
-#     df_exploded = df.explode('target_texts').rename(columns={'target_texts': 'target_text'})
-#     df_exploded['target_text'] = df_exploded['target_text'].str.strip()
-#     return Dataset.from_pandas(df_exploded[['input_text', 'target_text']])
-
-
-
-
 def get_saved_model():
     """
     Retrieves the best model and tokenizer that was saved after fine-tuning.
     """
-    saved_model = AutoModelForSeq2SeqLM.from_pretrained(FLAGS['saved_model_path'], local_files_only=True)
-    tokenizer = AutoTokenizer.from_pretrained(FLAGS['saved_model_path'], local_files_only=True, add_prefix_space=True)
+    saved_model = AutoModelForSeq2SeqLM.from_pretrained(SAVED_MODEL_PATH, local_files_only=True)
+    tokenizer = AutoTokenizer.from_pretrained(SAVED_MODEL_PATH, local_files_only=True, add_prefix_space=True)
 
     return saved_model.to("cuda" if torch.cuda.is_available() else "mps"), tokenizer
 
@@ -70,7 +54,7 @@ def generate_predictions(saved_model, test_set,lang):
     ""
     encoded_inputs = test_set.remove_columns("labels")
     # set-up a dataloader to load in the tokenized test dataset
-    dataloader = torch.utils.data.DataLoader(encoded_inputs,  batch_size=FLAGS['batch_size'])
+    dataloader = torch.utils.data.DataLoader(encoded_inputs,  batch_size= 4)
     language_prompts = {
         'br': 'RDF-to-br:',
         'cy': 'RDF-to-cy:',
@@ -98,65 +82,32 @@ def generate_predictions(saved_model, test_set,lang):
     return decoded_predictions
 
 
-
-# def format_only_labels(labels):
-#     formatted_labels = []
-#     for label in labels:
-#         # Check if the label is already in the desired format: a list with a single string element
-#         if isinstance(label, list) and len(label) == 1 and isinstance(label[0], str):
-#             formatted_label = label
-#         else:
-#             # This block will handle cases where the label is not in the desired format,
-#             # including when it's a list with multiple elements or contains brackets
-#             if isinstance(label, list):
-#                 # Concatenate elements, remove brackets, and strip whitespace
-#                 formatted_label = [' '.join(label).replace('[', '').replace(']', '').strip()]
-#             else:
-#                 # For single string elements, just ensure no brackets and strip
-#                 formatted_label = [label.replace('[', '').replace(']', '').strip()]
-#         formatted_labels.append(formatted_label)
-#     return formatted_labels
-# def postprocess_text(preds, labels):
-#     preds = [pred.strip() for pred in preds]
-#     labels = format_only_labels(labels)
-#     return preds, labels
-# def load_eval_metrics():
-#     """
-#     Loads in all metrics that will be used later on during evaluation. This is seperated to not load in the metrics a dozen of times during training.
-#     """
-#     bleu = evaluate.load("sacrebleu")
-#     rouge = evaluate.load('rouge')
-#     meteor = evaluate.load('meteor')
-#     ter = evaluate.load('ter')
-#     #perplexity = evaluate.load("perplexity", module_type="metric")
-#     bertscore = evaluate.load("bertscore")
-#
-#     print('LOGGING: load_eval_metrics DONE \n')
-#
-#     return bleu, rouge, meteor, ter,bertscore #perplexity, bertscore
-
-def evaluate_texts(decoded_preds, decoded_labels):
+def evaluate_texts(decoded_preds, decoded_labels,language):
     """
     Calculates metrics given a list of decoded predictions and decoded labels
     """
 
     #post_process for BLEU
-    blue_preds, blue_labels = postprocess_text(decoded_preds,  decoded_labels)
+    formatted_preds, formatted_labels = postprocess_text(decoded_preds,  decoded_labels)
+    adjusted_preds = [s.replace("'", '"') for s in formatted_preds]
+    adjusted_labels = [[s.replace('"', '').replace("'", '') for s in sublist] for sublist in formatted_labels]
+
 
     # setup metrics for use
-    bleu, rouge, meteor, ter, bertscore = load_eval_metrics()
-    log_filename = '/Users/georgioschristopoulos/PycharmProjects/Thesis/logs/metrics_log.txt'
-    #Calculate the metrics
+    bleu, rouge, meteor, ter, chrf, bertscore = load_eval_metrics()
+     #Calculate the metrics
     print(f'\n LOGGING: Calculating Blue')
-    bleu_output = bleu.compute(predictions=blue_preds, references=blue_labels)
+    bleu_output = bleu.compute(predictions=adjusted_preds, references=adjusted_labels)
     print(f'\n LOGGING: Calculating Rouge')
-    rouge_output = rouge.compute(predictions=decoded_preds, references=decoded_labels)
+    rouge_output = rouge.compute(predictions=adjusted_preds, references=adjusted_labels)
     print(f'\n LOGGING: Calculating Meteor')
-    meteor_output = meteor.compute(predictions= decoded_preds, references=decoded_labels)
+    meteor_output = meteor.compute(predictions= adjusted_preds, references=adjusted_labels)
     print(f'\n LOGGING: Calculating TER')
-    ter_output = ter.compute(predictions= decoded_preds, references=decoded_labels)
+    ter_output = ter.compute(predictions= adjusted_preds, references=adjusted_labels)
+    print(f'\n LOGGING: Calculating chrf')
+    chrf_output = chrf.compute(predictions=adjusted_preds, references=adjusted_labels)
     print(f'\n LOGGING: Calculating Bertscore')
-    bertscore_out= bertscore.compute(predictions= decoded_preds, references=decoded_labels, lang=lang)
+    bertscore_out= bertscore.compute(predictions= adjusted_preds, references=adjusted_labels, lang=language)
     P = bertscore_out['precision']
     R = bertscore_out['recall']
     F1 = bertscore_out['f1']
@@ -165,38 +116,30 @@ def evaluate_texts(decoded_preds, decoded_labels):
     R = float(sum(list(R)) / len(R))
     F1 = float(sum(list(F1)) / len(F1))
 
-
-    with open(log_filename, 'a') as log_file:
-
-        log_file.write(f"\n LOGGING: Calculating Bleu\n")
-        log_file.write(f"BLEU: {bleu_output}\n")
-        print(f'\n LOGGING: Calculating Rouge')
-        log_file.write(f"Rouge: {rouge}\n")
-        print(f'\n LOGGING: Calculating Meteor')
-        log_file.write(f"Rouge: {meteor_output}\n")
-        print(f'\n LOGGING: Calculating TER')
-        log_file.write(f"Rouge: {ter_output}\n")
-        log_file.write(f"\n LOGGING: Calculating Bertscore\n")
-        log_file.write(f"Bertscore Precision Mean: {P}\n")
-        log_file.write(f"Bertscore Recall Mean: {R}\n")
-        log_file.write(f"Bertscore F1 Mean: {F1}\n")
-
     print(f'\n LOGGING: Done calculations')
-    return bleu_output, rouge_output, meteor_output, ter_output, F1, P, R
+    return bleu_output, rouge_output, meteor_output, ter_output, chrf_output, F1, P, R
 # Note: You'll need to adapt `evaluate_test_set` based on your specific evaluation functions and logging mechanism.
 def evaluate_test_set(decoded_preds, true_articles_test,lang):
     """
     Transforms test set, retrieves predictions, and evaluates these predictions
     """
-    bleu_output, rouge_output, meteor_output, ter, F1,P,R = evaluate_texts(decoded_preds, true_articles_test)
+    bleu_output, rouge_output, meteor_output, ter, chrf, F1,P,R = evaluate_texts(decoded_preds, true_articles_test,lang)
+    metrics_evaluation = {"bleu": bleu_output["score"],
+                          "rouge": rouge_output["rougeL"],
+                          "meteor": meteor_output["meteor"],
+                          "TER": ter,
+                          "chrf": chrf["score"],
+                          "bertscore_F1": F1, "bertscore_P": P,
+                          "bertscore_R": R}
+    filename = "/Users/georgioschristopoulos/PycharmProjects/Thesis/evaluation_steps_metrics_inference.txt"
 
-    # Huggingsface trainer requires a dict if multiple metrics are used
-    evaluation_results = {"blue_output": bleu_output, "rouge_output": rouge_output, "meteor_results": meteor_output,"ter_results": ter,
-                           "bertscore_F1": F1,"Bertscore_P": P,"Bertscore_R": R}
+    with open(filename, "a") as file:
+        file.write(f"Testing inference :\n")
+        for key, value in metrics_evaluation.items():
+            file.write(f"{key}: {value}\n")
+        file.write("\n")
 
-
-
-    return evaluation_results
+    return metrics_evaluation
 
 # Assume 'tables' is your list from the screenshot
 def prepare_inputs_parent(rdfs):
@@ -240,9 +183,9 @@ def write_rdfs_to_file(rdfs, file_path):
         for rdf in rdfs:
             f.write(rdf + "\n")
 def evaluate_individual_rdf(decoded_predictions, true_articles_test, rdf_triples,lang_code):
-    gen_file = os.path.join(FLAGS['output_dir'], f'gen_{lang_code}.txt')
-    ref_file = os.path.join(FLAGS['output_dir'], f'ref_{lang_code}.txt')
-    table_file = os.path.join(FLAGS['output_dir'], f'table_{lang_code}.txt')
+    gen_file = os.path.join(OUTPUT_DIR, f'gen_{lang_code}.txt')
+    ref_file = os.path.join(OUTPUT_DIR, f'ref_{lang_code}.txt')
+    table_file = os.path.join(OUTPUT_DIR, f'table_{lang_code}.txt')
 
     with open(gen_file, 'w') as gf, open(ref_file, 'w') as rf, open(table_file, 'w') as tf:
         for pred, ref, rdf in zip(decoded_predictions, true_articles_test, rdf_triples):
@@ -259,7 +202,7 @@ def run_parent_evaluation(generation_file, reference_file, table_file):
     Run the PARENT metric evaluation script for the given files.
     """
     parent_command = [
-        "python", FLAGS['parent_script_path'],
+        "python", PARENT_SCRIPT_PATH,
         "--references", reference_file,
         "--generations", generation_file,
         "--tables", table_file
@@ -290,7 +233,6 @@ def run_parent_evaluation(generation_file, reference_file, table_file):
 
     return parent_results
 
-    #return result
 def transform_datasets(dataset):
     test_ds = dataset
     # to use the actual articles for evaluation
@@ -309,8 +251,8 @@ def transform_datasets(dataset):
 # Load the test set
 if __name__ == "__main__":
     model, tokenizer = get_saved_model()
-
-    languages = ['br', 'cy', 'ga','mt',]
+    language_metrics = {}
+    languages = ['mt','br', 'cy', 'ga']
     for lang in languages:
         # Load language-specific test data
         test_dataset = load_test_data_for_language(lang)
@@ -322,20 +264,21 @@ if __name__ == "__main__":
 
         # Evaluate predictions using standard metrics
         evaluation_results = evaluate_test_set(predictions, true_articles_test,lang)
-        if(lang =='mt'):
-            evaluation_results =  {
-                    "blue_output": evaluation_results["blue_output"],
-                    "chrf_output": evaluation_results.get("chrf_output"),  # Assuming this is the key for chrF++
-                    "ter_results": evaluation_results["ter_results"]
+        if lang != 'mt':
+            language_metrics[lang] = evaluation_results
+        else:
+            language_metrics[lang] =  {
+                    "blue": evaluation_results["bleu"],
+                    "chrf": evaluation_results.get("chrf"),  # Assuming this is the key for chrF++
+                    "TER": evaluation_results["TER"]["score"]
                                             }
+
         with open(f'evaluation_results_{lang}.json', 'w') as file:
             json.dump(evaluation_results, file)
 
         # PARENT evaluation
-        # Ensure you have a function like `evaluate_individual_rdf` for PARENT evaluation
         rdf_triples = prepare_inputs_parent(test_rdf_input)  # Assuming this function prepares RDF triples correctly
         parent_results = evaluate_individual_rdf(predictions, true_articles_test, rdf_triples, lang)
-
         write_rdfs_to_file(rdf_triples, f'/Users/georgioschristopoulos/PycharmProjects/Thesis/tables{lang}.txt')
         parent_results = json.loads(parent_results)
         #parent_results = {k: sum(v) / len(v) for k, v in parent_results.items() if v}
@@ -344,7 +287,6 @@ if __name__ == "__main__":
         # Now write the combined results to a language-specific file
         with open(f'combined_evaluation_results_{lang}.json', 'w') as file:
             json.dump(combined_results, file)
-
 
 
 
