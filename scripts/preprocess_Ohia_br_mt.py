@@ -1,13 +1,9 @@
-import pandas as pd
-import json
 import os
-
-# Function to read JSON and preprocess data
 import json
 import pandas as pd
 
 
-def preprocess_json(file_path, target_lang='en'):
+def preprocess_json(file_path, target_lang):
     with open(file_path, 'r', encoding='utf-8') as f:
         data = json.load(f)
     entries = data['entries']
@@ -40,13 +36,15 @@ def preprocess_json(file_path, target_lang='en'):
 
 
 # Directories
-orig = '/Users/georgioschristopoulos/PycharmProjects/Thesis/Datasets/WebNLG_br_mt_cy/2023-Challenge/data'
-prep = '/Users/georgioschristopoulos/PycharmProjects/Thesis/Datasets/WebNLG_br_mt_cy/2023-Challenge/data/ALT_prep'
+PATH = '/Users/georgioschristopoulos/PycharmProjects/Thesis'
+orig = f'{PATH}/Datasets/WebNLG_Ru/release_v3.0/ru'
+prep = f'{PATH}/Datasets/WebNLG_Ru/release_v3.0/ru/ALT_prep'
 os.makedirs(prep, exist_ok=True)
 
-splits = ['train', 'dev']
-languages = ['mt', 'ga', 'br', 'cy']  # Example languages
-
+splits = ['train', 'dev', 'test']
+# languages = ['mt', 'ga', 'br', 'cy']
+# Example languages
+languages =['ru']
 for split in splits:
     file_path = f'{orig}/{split}/{split}.json'
     for lang in languages:

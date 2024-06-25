@@ -1,7 +1,7 @@
 import json
-
+PATH = '/Users/georgioschristopoulos/PycharmProjects/Thesis'
 # Load your JSON data from a file or any other source
-with open('/Users/georgioschristopoulos/PycharmProjects/Thesis/Datasets/OPUS-100/aggregated_train.json', 'r') as f:
+with open(f'{PATH}/Datasets/OPUS-100/aggregated_train.json', 'r') as f:
     data = json.load(f)
 
 # Initialize the maximum length for English and French

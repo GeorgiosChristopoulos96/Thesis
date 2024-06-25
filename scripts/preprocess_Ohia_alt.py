@@ -1,8 +1,5 @@
-import pandas as pd
-import json
-import os
 
-# Function to read JSON and preprocess data
+import os
 import json
 import pandas as pd
 
@@ -41,12 +38,13 @@ def preprocess_json(file_path):
 
 
 # Directories
-orig = '/Users/georgioschristopoulos/PycharmProjects/Thesis/Datasets/WebNLG_br_mt_cy/2023-Challenge/data'
-prep = '/Users/georgioschristopoulos/PycharmProjects/Thesis/Datasets/WebNLG_br_mt_cy/2023-Challenge/data/ALT_prep'
+PATH = '/Users/georgioschristopoulos/PycharmProjects/Thesis'
+orig = f'{PATH}/Datasets/WebNLG_Ru/release_v3.0/ru'
+prep = f'{PATH}/Datasets/WebNLG_Ru/release_v3.0/ALT_prep'
 os.makedirs(prep, exist_ok=True)
 
 # Process splits
-splits = ['train', 'dev']
+splits = ['train', 'dev', 'test']
 for split in splits:
     file_path = f'{orig}/{split}/{split}.json'
     df = preprocess_json(file_path)

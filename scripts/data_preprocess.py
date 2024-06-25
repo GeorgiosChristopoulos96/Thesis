@@ -1,13 +1,11 @@
-import os
 import xml.etree.ElementTree as ET
 from collections import defaultdict
 from pathlib import Path
 import random
 
 # Define the base and output directories
-base_dir = Path("Datasets/WebNLG_En/release_v3.0/en")
-output_base = Path("Datasets/WebNLG_En_preprocessed/release_v3.0/en")
-# references_dir = output_base / "references_test"
+base_dir = Path("Datasets/WebNLG_Ru/release_v3.0/ru")
+output_base = Path("Datasets/WebNLG_Ru_preprocessed/release_v3.0/ru")
 
 # Ensure the output directories exist
 output_base.mkdir(parents=True, exist_ok=True)

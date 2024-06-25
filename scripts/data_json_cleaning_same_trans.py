@@ -49,7 +49,8 @@ def clean_files_in_directory(directory_path):
                 json.dump(cleaned_data, file, indent=4, ensure_ascii=False)
 
 # Example usage
-root_directory = '/Users/georgioschristopoulos/PycharmProjects/Thesis/Datasets/OPUS-100/test'  # Adjust the path to your dataset
+PATH = '/Users/georgioschristopoulos/PycharmProjects/Thesis'
+root_directory = f'{PATH}/Datasets/OPUS-100/test'
 for language_pair in os.listdir(root_directory):
     language_pair_path = os.path.join(root_directory, language_pair)
     if os.path.isdir(language_pair_path):

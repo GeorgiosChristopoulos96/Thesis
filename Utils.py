@@ -1,13 +1,11 @@
 import gc
-
 import evaluate
 import pandas as pd
 import torch
 from matplotlib import pyplot as plt
 from datasets import Dataset
-import wandb
 
-
+PATH = "/Users/georgioschristopoulos/PycharmProjects/Thesis/Datasets/WebNLG_br_mt_cy/2023-Challenge/data/ALT_prep/dev_"
 def postprocess_text(preds, labels):
     preds = [pred.strip() for pred in preds]
     labels = format_only_labels(labels)
@@ -21,12 +19,12 @@ def load_eval_metrics():
     rouge = evaluate.load('rouge')
     meteor = evaluate.load('meteor')
     ter = evaluate.load('ter')
-    #perplexity = evaluate.load("perplexity", module_type="metric")
+    chrf = evaluate.load("chrf")
     bertscore = evaluate.load("bertscore")
 
     print('LOGGING: load_eval_metrics DONE \n')
 
-    return bleu, rouge, meteor, ter,bertscore #perplexity, bertscore
+    return bleu, rouge, meteor, ter, chrf, bertscore
 
 
 def format_only_labels(labels):
@@ -81,7 +79,7 @@ def is_number(s):
         return False
 
 def load_test_data_for_language(lang):
-    test_tsv_path = f'/Users/georgioschristopoulos/PycharmProjects/Thesis/Datasets/WebNLG_br_mt_cy/2023-Challenge/data/ALT_prep/dev_{lang}.tsv'
+    test_tsv_path = f'{PATH}{lang}.tsv'
     return load_dataset_from_tsv(test_tsv_path)
 
 def load_dataset_from_tsv(tsv_path):
@@ -91,29 +89,30 @@ def load_dataset_from_tsv(tsv_path):
     df['target_text'] = df['lexicalization']
     return Dataset.from_pandas(df[['input_text', 'target_text']])
 
-def evaluate_texts(decoded_preds, decoded_labels):
+def evaluate_texts(decoded_preds, decoded_labels,lang):
     """
     Calculates metrics given a list of decoded predictions and decoded labels
     """
 
     #post_process for BLEU
-    blue_preds, blue_labels = postprocess_text(decoded_preds,  decoded_labels)
+    formatted_preds, formatted_labels = postprocess_text(decoded_preds,  decoded_labels)
+    adjusted_preds = [s.replace("'", '"') for s in formatted_preds]
+    adjusted_labels = [[s.replace('"', '').replace("'", '') for s in sublist] for sublist in formatted_labels]
 
-    # setup metrics for use
-    bleu, rouge, meteor,ter, bertscore = load_eval_metrics()
-    log_filename = '/Users/georgioschristopoulos/PycharmProjects/Thesis/logs/metrics_log.txt'
-    #Calculate the metrics
+    bleu, rouge, meteor, ter, chrf, bertscore = load_eval_metrics()
+
     print(f'\n LOGGING: Calculating Blue')
-    bleu_output = bleu.compute(predictions=blue_preds, references=blue_labels)
+    bleu_output = bleu.compute(predictions=adjusted_preds, references=adjusted_labels)
     print(f'\n LOGGING: Calculating Rouge')
-    rouge_output = rouge.compute(predictions=decoded_preds, references=decoded_labels)
+    rouge_output = rouge.compute(predictions=adjusted_preds, references=adjusted_labels)
     print(f'\n LOGGING: Calculating Meteor')
-    meteor_output = meteor.compute(predictions= decoded_preds, references=decoded_labels)
-    print(f'\n LOGGING: Calculating Ter')
-    ter_output = ter.compute(predictions=decoded_preds, references=decoded_labels)
-    #might have to delete bertscore
+    meteor_output = meteor.compute(predictions= adjusted_preds, references=adjusted_labels)
+    print(f'\n LOGGING: Calculating TER')
+    ter_output = ter.compute(predictions= adjusted_preds, references=adjusted_labels)
+    print(f'\n LOGGING: Calculating chrf')
+    chrf_output = chrf.compute(predictions=adjusted_preds, references=adjusted_labels)
     print(f'\n LOGGING: Calculating Bertscore')
-    bertscore_out= bertscore.compute(predictions= decoded_preds, references=decoded_labels, lang="en")
+    bertscore_out= bertscore.compute(predictions= adjusted_preds, references=adjusted_labels, lang=lang)
     P = bertscore_out['precision']
     R = bertscore_out['recall']
     F1 = bertscore_out['f1']
@@ -122,39 +121,18 @@ def evaluate_texts(decoded_preds, decoded_labels):
     R = float(sum(list(R)) / len(R))
     F1 = float(sum(list(F1)) / len(F1))
 
-    # Log the mean BERTScores to Weights & Biases
-    wandb.log({
-        "BERTScore_Precision_mean": P,
-        "BERTScore_Recall_mean": R,
-        "BERTScore_F1_mean": F1
-    })
-    with open(log_filename, 'a') as log_file:
-        log_file.write(f"\n LOGGING: Calculating Perplexity\n")
-        # Assume perp_output is a dictionary that includes perplexity value under 'perplexity' key
-        #log_file.write(f"Perplexity: {perp_output}\n")
-
-        log_file.write(f"\n LOGGING: Calculating Bertscore\n")
-        log_file.write(f"Bertscore Precision Mean: {P}\n")
-        log_file.write(f"Bertscore Recall Mean: {R}\n")
-        log_file.write(f"Bertscore F1 Mean: {F1}\n")
-
     print(f'\n LOGGING: Done calculations')
-    wandb.log({"BLEU": bleu_output["score"], "ROUGE": rouge_output["rougeL"], "METEOR": meteor_output["meteor"],
-               "TER": ter_output["score"], "BERTScore_F1": F1, "BERTScore_P": P, "BERTScore_R": R})
-    return bleu_output, rouge_output, meteor_output, ter_output, F1, P, R
+    return bleu_output, rouge_output, meteor_output, ter_output, chrf_output, F1, P, R
 
 
-def ensure_cuda_compatability():
+def CUDA_CLEAN():
     print(f'Torch version: {torch.__version__}')
     print(f'Cuda version: {torch.version.cuda}')
     print(f'Cudnn version: {torch.backends.cudnn.version()}')
     print(f'Is cuda available: {torch.cuda.is_available()}')
     print(f'Number of cuda devices: {torch.cuda.device_count()}')
-    print(f'Current default device: {torch.cuda.current_device()}')
-    print(f'First cuda device: {torch.cuda.device(0)}')
-    print(f'Name of the first cuda device: {torch.cuda.get_device_name(0)}\n\n')
     torch.backends.cuda.matmul.allow_tf32 = True
     torch.backends.cudnn.allow_tf32 = True
-    #Ensure we are really working with full GPU capacity
     gc.collect()
     torch.cuda.empty_cache()
+

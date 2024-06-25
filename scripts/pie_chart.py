@@ -2,10 +2,11 @@ import json
 from collections import Counter
 import matplotlib.pyplot as plt
 
+PATH = '/Users/georgioschristopoulos/PycharmProjects/Thesis'
 # Load your JSON data for train, test, and validation
-train_data = json.load(open('/Users/georgioschristopoulos/PycharmProjects/Thesis/Datasets/OPUS-100/test_augmented/aggregated_train.json', 'r'))
-test_data = json.load(open('/Users/georgioschristopoulos/PycharmProjects/Thesis/Datasets/OPUS-100/test_augmented/aggregated_test.json', 'r'))
-validation_data = json.load(open('/Users/georgioschristopoulos/PycharmProjects/Thesis/Datasets/OPUS-100/test_augmented/aggregated_validation.json', 'r'))
+train_data = json.load(open(f'{PATH}/Datasets/OPUS-100/test_augmented/aggregated_train.json', 'r'))
+test_data = json.load(open(f'{PATH}/Datasets/OPUS-100/test_augmented/aggregated_test.json', 'r'))
+validation_data = json.load(open(f'{PATH}/Datasets/OPUS-100/test_augmented/aggregated_validation.json', 'r'))
 
 # Assuming each dataset has a key named 'translation'
 translation_key = 'translation'

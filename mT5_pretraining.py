@@ -1,43 +1,28 @@
-import json
-import os
-import transformers
-from matplotlib import ticker
-import wandb
 from transformers import AutoTokenizer, AutoModelForSeq2SeqLM, DataCollatorForSeq2Seq, Seq2SeqTrainingArguments, \
-    Seq2SeqTrainer, EarlyStoppingCallback, Adafactor,TrainerCallback
+    Seq2SeqTrainer, EarlyStoppingCallback,TrainerCallback
 from datasets import load_from_disk
 import numpy as np
 import torch
-import gc
-import evaluate
 import nltk
 import matplotlib.pyplot as plt
 from matplotlib import ticker
 import os
-from Utils import format_only_labels, load_eval_metrics, postprocess_text, evaluate_texts, plot_dual_metrics
+from Utils import  evaluate_texts, CUDA_CLEAN
 
-#nltk.download('wordnet')
-#nltk.download('punkt')
-# os.environ['PYTORCH_MPS_HIGH_WATERMARK_RATIO'] = '0.0'
-DATASET_PATH= "/Users/georgioschristopoulos/PycharmProjects/Thesis/Datasets/OPUS-100/test"
-with open('config_pretrain.json', 'r') as f:
-    config_args = json.load(f)
-wandb.init(project= "mt5-pretrained-model", entity= "gogot53",)
-wandb.config.update({k: v for k, v in config_args.items() if k != "wandb"})
-#MAYBE IMPLEMENT CONTINUOUS LEARNING
+nltk.download('wordnet')
+nltk.download('punkt')
+PATH = "/Users/georgioschristopoulos/PycharmProjects/Thesis"
+DATASET_PATH= f"{PATH}/Datasets/OPUS-100/test"
 
-
-#ensure_cuda_compatability()
-if not torch.backends.mps.is_available():
-    print("MPS not available")
-    mps_device = torch.device("cpu")  # Fall back to CPU if MPS is not available
+if torch.cuda.is_available():
+    torch.device('cuda')
+    CUDA_CLEAN()
 else:
-    mps_device = torch.device("mps")
+    torch.device('cpu')
 
-
-checkpoint = "google/mt5-small"
+checkpoint = f"{PATH}/RDF-to-text_finetuned"
 tokenizer = AutoTokenizer.from_pretrained(checkpoint, legacy = False, use_fast = False)
-model = AutoModelForSeq2SeqLM.from_pretrained(checkpoint).to(mps_device)
+model = AutoModelForSeq2SeqLM.from_pretrained(checkpoint)
 class MetricsCallback(TrainerCallback):
     def __init__(self):
         super().__init__()
@@ -47,32 +32,62 @@ class MetricsCallback(TrainerCallback):
         if metrics:
             self.metrics_history.append(metrics)
 
-
-
 def compute_metrics(eval_preds):
     preds, labels = eval_preds
     if isinstance(preds, tuple):
         preds = preds[0]
 
-    # Decoding the predictions
     decoded_preds = tokenizer.batch_decode(preds, skip_special_tokens=True)
-
-    # Handling -100 values for labels which are used to ignore some tokens in loss computation
     labels = np.where(labels != -100, labels, tokenizer.pad_token_id)
     decoded_labels = tokenizer.batch_decode(labels, skip_special_tokens=True)
 
-    bleu_output, rouge_output, meteor_output, ter, chrf, bertscore_F1,bertscore_P, bertscore_R = evaluate_texts(decoded_preds, decoded_labels)
-    filename = "/Users/georgioschristopoulos/PycharmProjects/Thesis/evaluation_steps_metrics.txt"
+    # Initialize a dictionary to hold the predictions for each language pair
+    predictions_by_language = {}
 
+    # Iterate over the decoded predictions and filter by language pair
+    for pred in decoded_preds:
+        # Split the language pair from the actual prediction
+        lang_pair, actual_pred = pred.split(':', 1)
+        lang_pair = lang_pair.strip()
 
-    metrics_evaluation = {"bleu": bleu_output["score"], "rouge": rouge_output["rougeL"], "meteor": meteor_output["meteor"],
-            "TER": ter, "chrf":chrf, "bertscore_F1": bertscore_F1, "bertscore_P": bertscore_P, "bertscore_R": bertscore_R}
-    with open(filename, "a") as file:
-        file.write(f"Evaluation at step {trainer.state.global_step}:\n")
-        for key, value in metrics_evaluation.items():
-            file.write(f"{key}: {value}\n")
-        file.write("\n")
-    return metrics_evaluation
+        if lang_pair not in predictions_by_language:
+            predictions_by_language[lang_pair] = []
+
+        predictions_by_language[lang_pair].append(actual_pred.strip())
+
+    # Now `predictions_by_language` contains all the predictions grouped by their language pair
+    # You can then proceed to calculate metrics for each language pair
+    metrics_by_language = {}
+    for lang_pair, preds in predictions_by_language.items():
+        # Filter labels for the current language pair as well
+        current_labels = [label for label in decoded_labels if label.startswith(lang_pair + ':')]
+
+        # Ensure that the labels match the predictions in number
+        if len(preds) != len(current_labels):
+            print(f"Number of predictions and labels do not match for {lang_pair}")
+            continue
+
+        # Remove the language pair prefix from labels for metric calculation
+        current_labels = [label.split(':', 1)[-1].strip() for label in current_labels]
+
+        # Calculate metrics for the current language pair
+        bleu_output, rouge_output, meteor_output, ter, chrf, bertscore_F1, bertscore_P, bertscore_R = evaluate_texts(
+            preds, current_labels, lang_pair.split('-')[-1])  # Assuming 'en' is the target language for all evaluations
+
+        # Store the calculated metrics
+        metrics_by_language[lang_pair] = {
+            "bleu": bleu_output["score"],
+            "rouge": rouge_output["rougeL"],
+            "meteor": meteor_output["meteor"],
+            "TER": ter,
+            "chrf": chrf,
+            "bertscore_F1": bertscore_F1,
+            "bertscore_P": bertscore_P,
+            "bertscore_R": bertscore_R
+        }
+
+    return metrics_by_language
+
 
 def preprocess_function(examples,source_lang, target_lang):
     inputs = examples[source_lang]
@@ -81,17 +96,17 @@ def preprocess_function(examples,source_lang, target_lang):
     with tokenizer.as_target_tokenizer():
         labels = tokenizer(targets, max_length=128, truncation=True, padding="max_length",return_tensors="pt")
     model_inputs["labels"] = labels["input_ids"]
+
     return model_inputs
 
-path_to_shards = "/Users/georgioschristopoulos/PycharmProjects/Thesis"
 
 train = "/train_no_augm_dataset"
 test = "/test_no_augm_dataset"
 validation = "/validation_no_augm_dataset"
 # Now you have the dataset loaded and can access the train, test, and validation splits normally
-train_dataset = load_from_disk(f"{path_to_shards}/{train}").select(range(10))
-test_dataset = load_from_disk(f"{path_to_shards}/{test}").select(range(10))
-validation_dataset = load_from_disk(f"{path_to_shards}/{validation}").select(range(10))
+train_dataset = load_from_disk(f"{PATH}/{train}")
+test_dataset = load_from_disk(f"{PATH}/{test}")
+validation_dataset = load_from_disk(f"{PATH}/{validation}")
 # tokenized_data = data.map(preprocess_function, batched=True)
 
 train_dataset.set_format(type='torch', columns=['input_ids', 'attention_mask', 'labels'])
@@ -99,30 +114,36 @@ validation_dataset.set_format(type='torch', columns=['input_ids', 'attention_mas
 test_dataset.set_format(type='torch', columns=['input_ids', 'attention_mask', 'labels'])
 data_collator = DataCollatorForSeq2Seq(tokenizer=tokenizer, model=model)
 
-#might have to adjust learning rate
-#maybe more training steps
-#warm up steps can be proportonal to the number of training steps
-optimizer = Adafactor(model.parameters(),lr=0.001,relative_step= False )#lr=0.001
-scheduler = None
-# Create the learning rate scheduler
-# scheduler = transformers.get_inverse_sqrt_schedule(
-#     optimizer, num_warmup_steps= 1
-# )
-
 
 metrics_callback = MetricsCallback()
-training_args = Seq2SeqTrainingArguments(**config_args)
+training_args = Seq2SeqTrainingArguments(
+    output_dir ="./mt5_pretrained_model_no_augm_checkpoints",
+    num_train_epochs = 1,
+    per_device_train_batch_size = 8,
+    per_device_eval_batch_size =8,
+    learning_rate = 0.001,
+    logging_dir = "./logs",
+    evaluation_strategy ="steps",
+    save_strategy ="steps",
+    eval_steps=10000,
+    logging_steps=10000,
+    save_steps=10000,
+    load_best_model_at_end= True,
+    optim= "adafactor",
+    save_total_limit =4,
+    gradient_accumulation_steps = 4,
+    predict_with_generate = True,
+)
 # Setup the trainer
 trainer = Seq2SeqTrainer(
     model=model,
     args=training_args,
-    optimizers= (optimizer,scheduler),
     train_dataset=train_dataset,
     eval_dataset= validation_dataset,
     tokenizer=tokenizer,
     data_collator=data_collator,
     compute_metrics=compute_metrics,
-    callbacks=[EarlyStoppingCallback(early_stopping_patience=3),metrics_callback],
+    callbacks=[EarlyStoppingCallback(early_stopping_patience=3),metrics_callback]
 )
 
 # Train and save the model
@@ -133,10 +154,14 @@ log_history = trainer.state.log_history
 def scale_losses_with_first_as_max(values):
     # If the first value is 0, scaling will cause division by zero.
     # In such a case, we can either skip scaling or set a minimum scale factor.
-    if values[0] == 0:
-        return values  # or you can return [val / (values[0] + epsilon) for val in values]
-    max_loss = values[0]
-    return [val / max_loss for val in values]
+    if not  values:
+        return []
+    else:
+        if values[0] == 0:
+            return values  # or you can return [val / (values[0] + epsilon) for val in values]
+        max_loss = values[0]
+        return [val / max_loss for val in values]
+
 
 
 def extract_metrics_for_plotting(metrics_history, metric_keys):
@@ -193,8 +218,6 @@ metrics_history = metrics_callback.metrics_history
 
 # Prepare data for plotting
 steps = [entry['step'] for entry in log_history if 'loss' in entry]
-#loss_values = [entry['loss'] for entry in log_history if 'loss' in entry]
-#eval_loss_values = [entry['eval_loss'] for entry in log_history if 'eval_loss' in entry]
 metrics_dict = {
     'Training Loss': [entry['loss'] for entry in log_history if 'loss' in entry],  # Replace with your actual values
     'Validation Loss': [entry['eval_loss'] for entry in log_history if 'eval_loss' in entry],
@@ -206,12 +229,12 @@ plot_metrics_or_loss(
     'Training and Validation Loss',
     'Loss',
     'loss_plot',
-    "/Users/georgioschristopoulos/PycharmProjects/Thesis",
+    PATH,
     is_loss=True,  # Specify that this is loss data
     apply_scaling=True  # Specify whether to apply scaling
 )
 eval_preds = trainer.predict(test_dataset)
-filename = "/Users/georgioschristopoulos/PycharmProjects/Thesis/metrics_test.txt"
+filename = f"{PATH}/metrics_test_dataset.txt"
 metrics = eval_preds.metrics
 # Write the metrics to the file
 with open(filename, "w") as file:
@@ -261,22 +284,6 @@ for metric_name in metric_keys:
             steps,
             metric_values,
             metric_name,
-            "/Users/georgioschristopoulos/PycharmProjects/Thesis",
+            PATH,
             apply_scaling=False  # Change to True if scaling is needed
         )
-
-
-model_artifact = wandb.Artifact(
-    name="pretrain_text_model",
-    type="model",
-    description="Pretraining mT5 on OPUS."
-)
-
-# Add the trained model directory to the artifact
-model_artifact.add_dir("./mt5_model_pretrain_FULL_APPLE")
-
-# Log the artifact to your wandb project
-wandb.log_artifact(model_artifact)
-
-# Finish the wandb run
-wandb.finish()

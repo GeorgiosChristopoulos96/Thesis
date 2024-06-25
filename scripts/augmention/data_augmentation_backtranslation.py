@@ -73,7 +73,7 @@ models_tokenizers = {
 data_dir = '/Users/georgioschristopoulos/PycharmProjects/Thesis/Datasets/OPUS-100/test'
 
 # List of PARENT_metric pairs to iterate over
-language_pairs = ['en-gd']#['en-am','en-he', 'en-gd', 'en-ga'] # Example PARENT_metric pairs
+language_pairs = ['en-gd','en-am','en-he', 'en-gd', 'en-ga']
 
 # Process each PARENT_metric pair
 for lang_pair in language_pairs:
