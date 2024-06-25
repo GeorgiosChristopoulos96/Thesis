@@ -8,7 +8,7 @@ from transformers import AutoModelForSeq2SeqLM, AutoTokenizer
 from torch.utils.data import DataLoader
 from Utils import postprocess_text, load_eval_metrics, is_number, load_test_data_for_language, CUDA_CLEAN
 device = "cuda" if torch.cuda.is_available() else "cpu"
-PATH = "/Users/georgioschristopoulos/PycharmProjects/Thesis"
+PATH = "/"
 SAVED_MODEL_PATH = f"{PATH}/RDF-to-text_2nd_exp"
 PARENT_SCRIPT_PATH = f"{PATH}/PARENT_metric/table_text_eval/table_text_eval.py"
 OUTPUT_DIR =PATH

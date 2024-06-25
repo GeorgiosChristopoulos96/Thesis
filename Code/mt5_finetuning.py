@@ -7,7 +7,7 @@ import pandas as pd
 import torch
 from Utils import  evaluate_texts, CUDA_CLEAN
 from transformers import TrainerCallback
-DATASET_PATH = "/Users/georgioschristopoulos/PycharmProjects/Thesis"
+DATASET_PATH = "/"
 if torch.cuda.is_available():
     torch.device('cuda')
     CUDA_CLEAN()

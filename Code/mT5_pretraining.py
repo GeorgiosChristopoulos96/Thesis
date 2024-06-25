@@ -11,7 +11,7 @@ from Utils import  evaluate_texts, CUDA_CLEAN
 
 nltk.download('wordnet')
 nltk.download('punkt')
-PATH = "/Users/georgioschristopoulos/PycharmProjects/Thesis"
+PATH = "/"
 DATASET_PATH= f"{PATH}/Datasets/OPUS-100/test"
 
 if torch.cuda.is_available():
